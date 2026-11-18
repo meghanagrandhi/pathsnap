@@ -1,9 +1,0 @@
-{
-  "beta": 3.0,
-  "tau": 0.5,
-  "unreachable_penalty": 20.0,
-  "backward_penalty": 3.0,
-  "dist_slack_m": 200.0,
-  "dist_factor": 2.0,
-  "gap_scale": true
-}

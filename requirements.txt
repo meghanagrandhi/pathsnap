@@ -1,12 +1,4 @@
-numpy
-pandas
-scipy
-scikit-learn
-lightgbm
-optuna
-matplotlib
-folium
-fastapi
-uvicorn
-pydantic
-requests
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pytest>=8.0

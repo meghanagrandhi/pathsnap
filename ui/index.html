@@ -1,146 +1,149 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PathSnap Evaluator</title>
-<style>
-  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#667085; --line:#d9dee7; --accent:#1f6feb; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#12161c; --card:#1b212a; --ink:#e8ecf2; --muted:#9aa5b5; --line:#2c3441; --accent:#58a6ff; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
-  header { padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; border-bottom:1px solid var(--line); background:var(--card); }
-  header h1 { font-size:18px; margin:0 12px 0 0; }
-  input[type=text] { padding:6px 8px; border:1px solid var(--line); border-radius:6px; min-width:240px; background:var(--bg); color:var(--ink); }
-  button { padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); cursor:pointer; }
-  button:hover { border-color:var(--accent); }
-  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-  button.sel { background:var(--accent); color:#fff; border-color:var(--accent); }
-  main { display:grid; grid-template-columns: 340px 1fr; gap:12px; padding:12px; height:calc(100vh - 62px); }
-  @media (max-width: 900px) { main { grid-template-columns:1fr; height:auto; } #map { height:60vh; } }
-  .panel { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; }
-  #trips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-  #map { border:1px solid var(--line); border-radius:8px; min-height:420px; }
-  table { border-collapse:collapse; width:100%; margin-top:8px; }
-  th,td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
-  th { color:var(--muted); font-weight:600; }
-  .muted { color:var(--muted); }
-  .err { color:#d92d20; }
-  h3 { margin:12px 0 4px; font-size:14px; }
-  .legend span { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; vertical-align:middle; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PathSnap Trip Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root { --bg:#f4f7fb; --panel:#fff; --ink:#172033; --muted:#667085; --line:#d9e1ec; --accent:#2563eb; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; }
+    .shell { display:grid; grid-template-columns:340px minmax(0,1fr); height:100vh; }
+    aside { overflow:auto; padding:18px; background:var(--panel); border-right:1px solid var(--line); }
+    h1 { margin:0 0 4px; font-size:21px; }
+    .subtitle { margin:0 0 16px; color:var(--muted); }
+    .drop { display:block; border:1px dashed #9daac0; border-radius:10px; padding:12px; margin-bottom:8px; background:#fbfcfe; }
+    .drop strong { display:block; margin-bottom:6px; }
+    input[type=file] { width:100%; }
+    button { width:100%; border:0; border-radius:8px; padding:10px 14px; background:var(--accent); color:white; font-weight:700; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    #status { min-height:21px; margin:10px 0; color:var(--muted); }
+    #status.error { color:#b42318; }
+    .legend { display:grid; gap:7px; margin-top:12px; padding:10px; border:1px solid var(--line); border-radius:8px; }
+    .legend div { display:flex; align-items:center; gap:8px; }
+    .swatch { width:22px; height:4px; border-radius:2px; display:inline-block; }
+    #counts { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px; }
+    .count { border:1px solid var(--line); border-radius:8px; padding:8px; }
+    .count strong { display:block; font-size:17px; }
+    .count span { color:var(--muted); font-size:12px; }
+    #map { height:100vh; background:#dfe6ee; }
+    @media (max-width: 760px) { .shell { grid-template-columns:1fr; height:auto; } aside { height:auto; border-right:0; border-bottom:1px solid var(--line); } #map { height:65vh; } }
+  </style>
 </head>
 <body>
-<header>
-  <h1>PathSnap Evaluator</h1>
-  <label>API URL <input id="api" type="text" value="http://localhost:8000"></label>
-  <button id="load" class="primary">Load trips</button>
-  <span id="status" class="muted"></span>
-</header>
-<main>
-  <section class="panel">
-    <h3 style="margin-top:0">Evaluation trips</h3>
-    <div id="trips"><span class="muted">Click “Load trips”.</span></div>
-    <div class="legend">
-      <div><span style="background:#1f6feb"></span>Raw GPS observations</div>
-      <div><span style="background:#e5484d"></span>Predicted route (HMM/Viterbi)</div>
-      <div><span style="background:#2da44e"></span>GPS points snapped to predicted arcs</div>
-    </div>
-    <div id="result"></div>
-  </section>
-  <div id="map"></div>
-</main>
+  <div class="shell">
+    <aside>
+      <h1>PathSnap Trip Viewer</h1>
+      <p class="subtitle">Upload one complete trip containing all four dataset files.</p>
+      <form id="upload">
+        <label class="drop"><strong>GPS observations (.track)</strong><input type="file" name="track" accept=".track" required></label>
+        <label class="drop"><strong>Road nodes (.nodes)</strong><input type="file" name="nodes" accept=".nodes" required></label>
+        <label class="drop"><strong>Road arcs (.arcs)</strong><input type="file" name="arcs" accept=".arcs" required></label>
+        <label class="drop"><strong>Reference route (.route)</strong><input type="file" name="route" accept=".route" required></label>
+        <button id="submit" type="submit">Analyze trip</button>
+      </form>
+      <div id="status">Choose all four files.</div>
+      <div class="legend" aria-label="Map legend">
+        <div><i class="swatch" style="background:#16a34a"></i>Original/reference graph</div>
+        <div><i class="swatch" style="background:#2563eb"></i>User/GPS path</div>
+        <div><i class="swatch" style="background:#dc2626"></i>Predicted path</div>
+      </div>
+      <div id="counts"></div>
+    </aside>
+    <div id="map"></div>
+  </div>
 
-<script>
-// Leaflet: use local copy in ui/vendor if present (offline venue), otherwise CDN.
-function loadLeaflet(cb) {
-  const css = document.createElement('link'); css.rel = 'stylesheet';
-  const js = document.createElement('script');
-  const tryLocal = () => { css.href = 'vendor/leaflet/leaflet.css'; js.src = 'vendor/leaflet/leaflet.js'; };
-  const useCdn = () => {
-    const c2 = document.createElement('link'); c2.rel = 'stylesheet'; c2.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(c2);
-    const s2 = document.createElement('script'); s2.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; s2.onload = cb;
-    document.head.appendChild(s2);
-  };
-  tryLocal(); js.onload = cb; js.onerror = useCdn;
-  document.head.appendChild(css); document.head.appendChild(js);
-}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map', { preferCanvas: true }).setView([20, 20], 3);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-let map, layers = {}, ctl;
-const $ = id => document.getElementById(id);
-const fmt = (x, d = 4) => (x === null || x === undefined || Number.isNaN(x)) ? 'n/a' : Number(x).toFixed(d);
-function setStatus(t, err) { $('status').textContent = t; $('status').className = err ? 'err' : 'muted'; }
-const base = () => $('api').value.replace(/\/+$/, '');
-try { const s = localStorage.getItem('pathsnap_api'); if (s) $('api').value = s; } catch (e) {}
+    let layers = null;
+    let layerControl = null;
+    const statusEl = document.getElementById('status');
+    const submitEl = document.getElementById('submit');
 
-function initMap() {
-  map = L.map('map', { preferCanvas: true }).setView([50, 8.6], 11);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
-}
+    function setStatus(message, error = false) {
+      statusEl.textContent = message;
+      statusEl.className = error ? 'error' : '';
+    }
 
-$('load').onclick = async () => {
-  try { localStorage.setItem('pathsnap_api', $('api').value); } catch (e) {}
-  setStatus('Loading trips…');
-  try {
-    const r = await fetch(base() + '/trips'); if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    const box = $('trips'); box.innerHTML = '';
-    d.trips.forEach(t => {
-      const b = document.createElement('button'); b.textContent = t.trip_id;
-      b.onclick = () => runTrip(t.trip_id, b); box.appendChild(b);
+    document.getElementById('upload').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const data = new FormData(form);
+
+      for (const kind of ['track', 'nodes', 'arcs', 'route']) {
+        const file = data.get(kind);
+        if (!file || !file.name || !file.name.toLowerCase().endsWith('.' + kind)) {
+          setStatus('Add exactly one valid .' + kind + ' file.', true);
+          return;
+        }
+      }
+
+      submitEl.disabled = true;
+      setStatus('Reading trip and generating demo prediction...');
+      try {
+        const response = await fetch('/trip/analyze', { method: 'POST', body: data });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || 'The trip could not be analyzed');
+        drawTrip(body);
+      } catch (error) {
+        setStatus(error.message, true);
+      } finally {
+        submitEl.disabled = false;
+      }
     });
-    setStatus(d.trips.length + ' trips available');
-  } catch (e) { setStatus('Cannot reach API: ' + e.message, true); }
-};
 
-async function runTrip(id, btn) {
-  document.querySelectorAll('#trips button').forEach(b => b.classList.remove('sel')); btn.classList.add('sel');
-  setStatus('Running pipeline for trip ' + id + '…'); $('result').innerHTML = '';
-  try {
-    const t0 = performance.now();
-    const r = await fetch(base() + '/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trip_id: id }) });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    draw(d); showMetrics(d, (performance.now() - t0) / 1000);
-    setStatus('Trip ' + id + ' done');
-  } catch (e) { setStatus('Request failed: ' + e.message, true); }
-}
+    function drawTrip(data) {
+      if (layers) {
+        Object.values(layers).forEach(layer => map.removeLayer(layer));
+        layers = null;
+      }
+      if (layerControl) {
+        map.removeControl(layerControl);
+        layerControl = null;
+      }
 
-function draw(d) {
-  Object.values(layers).forEach(l => map.removeLayer(l)); if (ctl) map.removeControl(ctl);
-  const gps = L.layerGroup(d.gps_points.map(p => L.circleMarker(p, { radius: 2, color: '#1f6feb', weight: 1, fillOpacity: 0.6 })));
-  const snapped = L.layerGroup(d.snapped_points.filter(p => p).map(p => L.circleMarker(p, { radius: 2, color: '#2da44e', weight: 1, fillOpacity: 0.7 })));
-  const route = L.polyline(d.predicted_route_polyline, { color: '#e5484d', weight: 4, opacity: 0.9 });
-  layers = { gps, route, snapped };
-  gps.addTo(map); route.addTo(map);
-  ctl = L.control.layers(null, { 'Raw GPS': gps, 'Predicted route': route, 'Snapped points': snapped }, { collapsed: false }).addTo(map);
-  map.fitBounds(L.latLngBounds(d.gps_points).pad(0.05));
-}
+      const reference = L.polyline(data.route_segments, {
+        color: '#16a34a', weight: 2, opacity: 0.95
+      });
+      const user = L.polyline(data.gps_points, {
+        color: '#2563eb', weight: 3, opacity: 0.95
+      });
+      const predicted = L.polyline(data.predicted_route_segments, {
+        color: '#dc2626', weight: 2.5, opacity: 0.95
+      });
 
-function showMetrics(d, rtt) {
-  const m = d.metrics, c = m.classifier, h = m.hmm, t = d.timing_seconds;
-  const row = (n, a, b, dg = 4) => `<tr><td>${n}</td><td>${fmt(a, dg)}</td><td>${fmt(b, dg)}</td></tr>`;
-  $('result').innerHTML = `
-    <h3>Trip ${d.trip_id} — ${d.n_observations} GPS observations</h3>
-    <table><tr><th>Metric</th><th>Classifier only</th><th>+ HMM/Viterbi</th></tr>
-      ${row('Top-1 accuracy', c.top1_acc, h.top1_acc)}
-      ${row('Route F1', c.route_f1, h.route_f1)}
-      ${row('Route precision', c.route_precision, h.route_precision)}
-      ${row('Route recall', c.route_recall, h.route_recall)}
-      ${row('Continuity (strict)', c.continuity_strict, h.continuity_strict)}
-      ${row('Continuity (relaxed)', c.continuity_relaxed, h.continuity_relaxed)}
-    </table>
-    <h3>Server timing (s)</h3>
-    <table><tr><td>Features</td><td>${t.features}</td></tr><tr><td>Classifier</td><td>${t.classifier}</td></tr>
-    <tr><td>HMM / Viterbi</td><td>${t.hmm}</td></tr><tr><td>Total (server)</td><td>${t.total}</td></tr>
-    <tr><td>Round trip (browser)</td><td>${rtt.toFixed(2)}</td></tr></table>
-    <p class="muted">Predicted route: ${d.predicted_route_arcs.length} road segments. Reference data stays on the server.</p>`;
-}
+      const gpsMarkers = L.layerGroup(data.gps_points.map(point =>
+        L.circleMarker(point, { radius: 2, color: '#2563eb', weight: 1, fillOpacity: 0.75 })
+      ));
 
-loadLeaflet(initMap);
-</script>
+      layers = { reference, user, gpsMarkers, predicted };
+      Object.values(layers).forEach(layer => layer.addTo(map));
+
+      layerControl = L.control.layers(null, {
+        'Original/reference graph': reference,
+        'User/GPS path': user,
+        'User/GPS points': gpsMarkers,
+        'Predicted path': predicted
+      }, { collapsed: false }).addTo(map);
+
+      const bounds = L.latLngBounds(data.gps_points);
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.08));
+
+      const counts = data.counts;
+      document.getElementById('counts').innerHTML = `
+        <div class="count"><strong>${counts.gps_observations}</strong><span>GPS observations</span></div>
+        <div class="count"><strong>${counts.nodes}</strong><span>Road nodes</span></div>
+        <div class="count"><strong>${counts.arcs}</strong><span>Road arcs</span></div>
+        <div class="count"><strong>${counts.reference_route_arcs}</strong><span>Reference arcs</span></div>`;
+      setStatus(`${data.model}: demo prediction ready. Original route is based on the uploaded .route file.`);
+    }
+  </script>
 </body>
 </html>
