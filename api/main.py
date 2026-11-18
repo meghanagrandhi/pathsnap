@@ -1,13 +1,15 @@
-"""PathSnap upload API. It accepts one complete trip and runs a replaceable demo model."""
+"""PathSnap API for backend test-dataset IDs and complete trip uploads."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+import re
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -24,35 +26,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "mode": "xgboost_viterbi_v1"}
+TEST_DATASET_DIR = ROOT / "dataset" / "test"
+TRIP_FILE_EXTENSIONS = ("track", "nodes", "arcs", "route")
 
 
-@app.get("/", include_in_schema=False)
-def frontend():
-    index = ROOT / "ui" / "index.html"
-    return FileResponse(index)
+class DatasetTripRequest(BaseModel):
+    dataset_id: str
 
 
-@app.post("/trip/analyze")
-async def analyze_trip(
-    track: UploadFile = File(...),
-    nodes: UploadFile = File(...),
-    arcs: UploadFile = File(...),
-    route: UploadFile = File(...),
-):
-    uploads = {"track": track, "nodes": nodes, "arcs": arcs, "route": route}
-    for kind, upload in uploads.items():
-        if Path(upload.filename or "").suffix.lower() != f".{kind}":
-            raise HTTPException(status_code=422, detail=f"{kind} upload must have a .{kind} filename")
-
+def _dataset_trip_files(dataset_id: str) -> dict[str, tuple[str, bytes]]:
+    if not re.fullmatch(r"\d{8}", dataset_id):
+        raise HTTPException(status_code=422, detail="dataset_id must be an eight-digit test dataset ID")
+    folder = TEST_DATASET_DIR / dataset_id
+    if not folder.is_dir():
+        raise HTTPException(status_code=404, detail=f"unknown test dataset_id {dataset_id}")
     files = {}
+    missing = []
+    for extension in TRIP_FILE_EXTENSIONS:
+        path = folder / f"{dataset_id}.{extension}"
+        if not path.is_file():
+            missing.append(path.name)
+        else:
+            files[extension] = (path.name, path.read_bytes())
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"test dataset {dataset_id} is incomplete; missing: {', '.join(missing)}",
+        )
+    return files
+
+
+def _available_test_dataset_ids() -> list[str]:
+    if not TEST_DATASET_DIR.is_dir():
+        return []
+    return sorted(
+        folder.name
+        for folder in TEST_DATASET_DIR.iterdir()
+        if folder.is_dir() and all((folder / f"{folder.name}.{ext}").is_file() for ext in TRIP_FILE_EXTENSIONS)
+    )
+
+
+def _analyze_files(files: dict[str, tuple[str, bytes]], trip_id: str) -> dict:
     try:
-        for kind, upload in uploads.items():
-            content = await upload.read()
-            files[kind] = (upload.filename or f"trip.{kind}", content)
         trip = parse_trip(files)
     except TripValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -67,8 +82,8 @@ async def analyze_trip(
     predicted_route_segments = route_segments_for_ids(
         trip["nodes"], trip["arcs"], prediction["route_arc_ids"]
     )
-
     return {
+        "dataset_id": trip_id,
         "gps_points": trip["gps_points"],
         "timestamps": trip["timestamps"],
         "road_segments": trip["road_segments"],
@@ -85,3 +100,43 @@ async def analyze_trip(
             "reference_route_arcs": len(trip["route_arc_ids"]),
         },
     }
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "mode": "xgboost_viterbi_v1"}
+
+
+@app.get("/", include_in_schema=False)
+def frontend():
+    index = ROOT / "ui" / "index.html"
+    return FileResponse(index)
+
+
+@app.get("/test-datasets")
+def test_datasets():
+    return {"dataset_ids": _available_test_dataset_ids()}
+
+
+@app.post("/trip/analyze-by-id")
+def analyze_dataset_trip(request: DatasetTripRequest):
+    return _analyze_files(_dataset_trip_files(request.dataset_id), request.dataset_id)
+
+
+@app.post("/trip/analyze")
+async def analyze_trip(
+    track: UploadFile = File(...),
+    nodes: UploadFile = File(...),
+    arcs: UploadFile = File(...),
+    route: UploadFile = File(...),
+):
+    uploads = {"track": track, "nodes": nodes, "arcs": arcs, "route": route}
+    for kind, upload in uploads.items():
+        if Path(upload.filename or "").suffix.lower() != f".{kind}":
+            raise HTTPException(status_code=422, detail=f"{kind} upload must have a .{kind} filename")
+
+    files = {}
+    for kind, upload in uploads.items():
+        content = await upload.read()
+        files[kind] = (upload.filename or f"trip.{kind}", content)
+    return _analyze_files(files, "uploaded")

@@ -14,6 +14,11 @@
     h1 { margin:0 0 4px; font-size:21px; }
     .subtitle { margin:0 0 16px; color:var(--muted); }
     .drop { display:block; border:1px dashed #9daac0; border-radius:10px; padding:12px; margin-bottom:8px; background:#fbfcfe; }
+    .mode { display:flex; gap:14px; margin:12px 0; }
+    .mode label { display:flex; align-items:center; gap:5px; }
+    .dataset-mode { display:none; }
+    .dataset-mode input { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; }
+    .hint { margin:5px 0 10px; color:var(--muted); font-size:12px; }
     .drop strong { display:block; margin-bottom:6px; }
     input[type=file] { width:100%; }
     button { width:100%; border:0; border-radius:8px; padding:10px 14px; background:var(--accent); color:white; font-weight:700; cursor:pointer; }
@@ -35,12 +40,22 @@
   <div class="shell">
     <aside>
       <h1>PathSnap Trip Viewer</h1>
-      <p class="subtitle">Upload one complete trip containing all four dataset files.</p>
+      <p class="subtitle">Choose a test dataset ID or upload one complete trip.</p>
       <form id="upload">
-        <label class="drop"><strong>GPS observations (.track)</strong><input type="file" name="track" accept=".track" required></label>
-        <label class="drop"><strong>Road nodes (.nodes)</strong><input type="file" name="nodes" accept=".nodes" required></label>
-        <label class="drop"><strong>Road arcs (.arcs)</strong><input type="file" name="arcs" accept=".arcs" required></label>
-        <label class="drop"><strong>Reference route (.route)</strong><input type="file" name="route" accept=".route" required></label>
+        <div class="mode">
+          <label><input type="radio" name="source" value="dataset" checked> Test dataset ID</label>
+          <label><input type="radio" name="source" value="upload"> Upload files</label>
+        </div>
+        <div id="dataset-mode" class="dataset-mode">
+          <label class="drop"><strong>Dataset ID</strong><input id="dataset-id" name="dataset_id" inputmode="numeric" pattern="[0-9]{8}" placeholder="e.g. 00000000"></label>
+          <p class="hint">Valid IDs: <span id="valid-ids">loading...</span></p>
+        </div>
+        <div id="upload-mode">
+          <label class="drop"><strong>GPS observations (.track)</strong><input type="file" name="track" accept=".track"></label>
+          <label class="drop"><strong>Road nodes (.nodes)</strong><input type="file" name="nodes" accept=".nodes"></label>
+          <label class="drop"><strong>Road arcs (.arcs)</strong><input type="file" name="arcs" accept=".arcs"></label>
+          <label class="drop"><strong>Reference route (.route)</strong><input type="file" name="route" accept=".route"></label>
+        </div>
         <button id="submit" type="submit">Analyze trip</button>
       </form>
       <div id="status">Choose all four files.</div>
@@ -66,6 +81,31 @@
     let layerControl = null;
     const statusEl = document.getElementById('status');
     const submitEl = document.getElementById('submit');
+    const datasetModeEl = document.getElementById('dataset-mode');
+    const uploadModeEl = document.getElementById('upload-mode');
+    let validDatasetIds = [];
+
+    document.querySelectorAll('input[name="source"]').forEach(input => {
+      input.addEventListener('change', () => {
+        const datasetSelected = input.value === 'dataset' && input.checked;
+        if (datasetSelected) {
+          datasetModeEl.style.display = 'block';
+          uploadModeEl.style.display = 'none';
+        } else if (input.value === 'upload' && input.checked) {
+          datasetModeEl.style.display = 'none';
+          uploadModeEl.style.display = 'block';
+        }
+      });
+    });
+    document.querySelector('input[name="source"]:checked').dispatchEvent(new Event('change'));
+
+    fetch('/test-datasets')
+      .then(response => response.json())
+      .then(body => {
+        validDatasetIds = body.dataset_ids || [];
+        document.getElementById('valid-ids').textContent = validDatasetIds.join(', ');
+      })
+      .catch(() => { document.getElementById('valid-ids').textContent = 'could not load'; });
 
     function setStatus(message, error = false) {
       statusEl.textContent = message;
@@ -75,29 +115,45 @@
     document.getElementById('upload').addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
-      const data = new FormData(form);
+      const source = form.elements.source.value;
 
-      for (const kind of ['track', 'nodes', 'arcs', 'route']) {
-        const file = data.get(kind);
-        if (!file || !file.name || !file.name.toLowerCase().endsWith('.' + kind)) {
-          setStatus('Add exactly one valid .' + kind + ' file.', true);
+      if (source === 'dataset') {
+        const datasetId = document.getElementById('dataset-id').value.trim();
+        if (!validDatasetIds.includes(datasetId)) {
+          setStatus('Enter one of the valid test dataset IDs.', true);
           return;
         }
+        await analyze('/trip/analyze-by-id', { dataset_id: datasetId });
+      } else {
+        const data = new FormData(form);
+        for (const kind of ['track', 'nodes', 'arcs', 'route']) {
+          const file = data.get(kind);
+          if (!file || !file.name || !file.name.toLowerCase().endsWith('.' + kind)) {
+            setStatus('Add exactly one valid .' + kind + ' file.', true);
+            return;
+          }
+        }
+        await analyze('/trip/analyze', data);
       }
+    });
 
+    async function analyze(endpoint, body) {
       submitEl.disabled = true;
       setStatus('Reading trip and running the production model...');
       try {
-        const response = await fetch('/trip/analyze', { method: 'POST', body: data });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.detail || 'The trip could not be analyzed');
-        drawTrip(body);
+        const options = endpoint.endsWith('by-id')
+          ? { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) }
+          : { method: 'POST', body };
+        const response = await fetch(endpoint, options);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'The trip could not be analyzed');
+        drawTrip(result);
       } catch (error) {
         setStatus(error.message, true);
       } finally {
         submitEl.disabled = false;
       }
-    });
+    }
 
     function drawTrip(data) {
       if (layers) {

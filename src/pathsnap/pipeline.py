@@ -11,7 +11,7 @@ import numpy as np
 
 from . import config as C
 from .features import build_candidate_table, feature_matrix
-from .hmm import fill_route, viterbi
+from .hmm import viterbi
 from .io import Trip
 from .network import Network
 
@@ -137,7 +137,9 @@ def predict_parsed_trip(parsed: Mapping[str, Any], bundle: ModelBundle | None = 
     else:
         rows = chosen
     pred = np.where(rows >= 0, arc[np.maximum(rows, 0)], -1)
-    route = fill_route(net, pred)
+    # Keep exactly the HMM-selected arc sequence. Do not bridge gaps or replace
+    # low-confidence predictions with reference-route or nearest-road values.
+    route = [int(a) for a in pred if a >= 0]
 
     return {
         "route_arc_ids": [int(a) for a in route],

@@ -19,13 +19,6 @@ def test_parse_trip_builds_map_layers():
     assert trip["gps_points"] == [[20.0, 10.0], [20.001, 10.001]]
 
 
-def test_route_model_returns_edge_ids_from_route_file():
-    prediction = predict_route(b"4\n8\n15\n")
-    assert prediction["route_arc_ids"] == [4, 8, 15]
-    assert prediction["model"] == "demo_reference_route_v1"
-    assert prediction["is_demo"] is True
-
-
 def test_rejects_arc_outside_nodes():
     files = make_files()
     files["arcs"] = ("trip.arcs", b"0 9\n")
