@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+results/features_*.pkl
+results/oof_*.pkl
+results/student_*.pkl
+*.log
+.env
