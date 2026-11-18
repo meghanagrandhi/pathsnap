@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.pathsnap.model_stub import predict_route  # noqa: E402
+from src.pathsnap.pipeline import DependencyError, ModelLoadError  # noqa: E402
 from src.pathsnap.trip import TripValidationError, parse_trip, route_segments_for_ids  # noqa: E402
 
 app = FastAPI(title="PathSnap", version="2.0")
@@ -26,7 +27,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "mode": "demo_reference_route_v1"}
+    return {"status": "ok", "mode": "xgboost_viterbi_v1"}
 
 
 @app.get("/", include_in_schema=False)
@@ -56,7 +57,13 @@ async def analyze_trip(
     except TripValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    prediction = predict_route(files["route"][1])
+    try:
+        prediction = predict_route(trip)
+    except (DependencyError, ModelLoadError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Inference failed: {exc}") from exc
+
     predicted_route_segments = route_segments_for_ids(
         trip["nodes"], trip["arcs"], prediction["route_arc_ids"]
     )

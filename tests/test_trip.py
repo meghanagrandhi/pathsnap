@@ -35,3 +35,23 @@ def test_rejects_arc_outside_nodes():
         assert "outside nodes range" in str(exc)
     else:
         raise AssertionError("invalid arc should be rejected")
+
+
+def test_production_model_loads_and_predicts_synthetic_trip():
+    from src.pathsnap.pipeline import ModelBundle, predict_parsed_trip
+
+    bundle = ModelBundle()
+    parsed = {
+        "gps_points": [[20.0, 10.0], [20.001, 10.001]],
+        "gps_longitude_latitude": [[10.0, 20.0], [10.001, 20.001]],
+        "timestamps": [1.0, 2.0],
+        "nodes": [[10.0, 20.0], [10.001, 20.001]],
+        "arcs": [[0, 1]],
+        "route_arc_ids": [0],
+        "road_segments": [[[20.0, 10.0], [20.001, 10.001]]],
+        "route_segments": [[[20.0, 10.0], [20.001, 10.001]]],
+    }
+    prediction = predict_parsed_trip(parsed, bundle)
+    assert prediction["route_arc_ids"]
+    assert prediction["model"] == "xgboost_viterbi_v1"
+    assert prediction["is_demo"] is False

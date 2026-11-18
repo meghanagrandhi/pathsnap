@@ -86,7 +86,7 @@
       }
 
       submitEl.disabled = true;
-      setStatus('Reading trip and generating demo prediction...');
+      setStatus('Reading trip and running the production model...');
       try {
         const response = await fetch('/trip/analyze', { method: 'POST', body: data });
         const body = await response.json();
@@ -142,7 +142,7 @@
         <div class="count"><strong>${counts.nodes}</strong><span>Road nodes</span></div>
         <div class="count"><strong>${counts.arcs}</strong><span>Road arcs</span></div>
         <div class="count"><strong>${counts.reference_route_arcs}</strong><span>Reference arcs</span></div>`;
-      setStatus(`${data.model}: demo prediction ready. Original route is based on the uploaded .route file.`);
+      setStatus(`${data.model}: prediction ready. The reference graph uses the uploaded .route file.`);
     }
   </script>
 </body>
